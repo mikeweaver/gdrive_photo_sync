@@ -26,7 +26,7 @@ class PhotosClient:
             credentials: Google API credentials
         """
         self.credentials = credentials
-        self.service = build('photoslibrary', 'v1', credentials=credentials)
+        self.service = build('photoslibrary', 'v1', credentials=credentials, static_discovery=False)
         self.upload_url = 'https://photoslibrary.googleapis.com/v1/uploads'
         
     def find_album_by_name(self, album_name: str) -> Optional[str]:

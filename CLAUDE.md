@@ -20,7 +20,7 @@ This is a brand new project. No code has been written yet.
 - Use the google-api-python-client API client
 
 ### Authentication
-- Use the Device Flow for Google API authentication
+- Use the OAuth2 Local Server Flow for Google API authentication
 - Save refresh tokens to avoid re-authentication
 - Read and store the credentials in a credentials.json file in the root directory
 

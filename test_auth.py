@@ -136,21 +136,21 @@ class TestGoogleAuth(unittest.TestCase):
     @patch.object(GoogleAuth, '_load_client_secrets')
     @patch('auth.InstalledAppFlow.from_client_config')
     @patch('builtins.open', new_callable=mock_open)
-    def test_perform_device_flow_success(self, mock_file, mock_flow_class, mock_load_secrets):
-        """Test successful device flow authentication."""
+    def test_perform_oauth_flow_success(self, mock_file, mock_flow_class, mock_load_secrets):
+        """Test successful OAuth flow authentication."""
         mock_secrets = {"test": "config"}
         mock_load_secrets.return_value = mock_secrets
         
         mock_flow = Mock()
         mock_creds = Mock()
         mock_creds.to_json.return_value = '{"token": "data"}'
-        mock_flow.run_console.return_value = mock_creds
+        mock_flow.run_local_server.return_value = mock_creds
         mock_flow_class.return_value = mock_flow
         
         result = self.auth._perform_device_flow()
         
         mock_flow_class.assert_called_once_with(mock_secrets, self.auth.scopes)
-        mock_flow.run_console.assert_called_once()
+        mock_flow.run_local_server.assert_called_once_with(port=0)
         mock_file.assert_called_once_with('token.json', 'w')
         self.assertEqual(result, mock_creds)
         self.assertEqual(self.auth.credentials, mock_creds)

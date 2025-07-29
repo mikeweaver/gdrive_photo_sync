@@ -94,8 +94,9 @@ class GoogleAuth:
             client_config = self._load_client_secrets()
             flow = InstalledAppFlow.from_client_config(client_config, self.scopes)
             
-            logger.info("Starting device flow authentication")
-            self.credentials = flow.run_console()
+            logger.info("Starting OAuth flow authentication")
+            print("Please complete the authentication in your web browser...")
+            self.credentials = flow.run_local_server(port=0)
             
             self._save_token()
             logger.info("Authentication successful")
