@@ -21,7 +21,10 @@ class GoogleAuth:
     def __init__(self):
         self.scopes = [
             'https://www.googleapis.com/auth/drive.readonly',
-            'https://www.googleapis.com/auth/photoslibrary'
+            'https://www.googleapis.com/auth/photoslibrary.appendonly',
+            'https://www.googleapis.com/auth/photoslibrary.edit.appcreateddata',
+            'https://www.googleapis.com/auth/photoslibrary.readonly',
+            'https://www.googleapis.com/auth/photoslibrary.readonly.appcreateddata'
         ]
         self.credentials: Optional[Credentials] = None
         
