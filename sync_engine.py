@@ -11,7 +11,7 @@ from typing import Optional, List, Set
 from auth import GoogleAuth
 from drive_client import DriveClient
 from photos_client import PhotosClient
-from utils import extract_album_id_from_url, generate_unique_filename, format_file_size
+from utils import generate_unique_filename, format_file_size
 
 
 logger = logging.getLogger(__name__)
@@ -70,22 +70,24 @@ class SyncEngine:
         self.drive_client: Optional[DriveClient] = None
         self.photos_client: Optional[PhotosClient] = None
         
-    def sync(self, drive_folder_id: str, photos_album: str, is_album_id: bool = False) -> None:
+    def sync(self, drive_folder_id: str, album_name: Optional[str] = None, album_id: Optional[str] = None) -> None:
         """
         Perform the synchronization.
         
         Args:
             drive_folder_id: Google Drive folder ID
-            photos_album: Google Photos album name or ID
-            is_album_id: True if photos_album is an ID, False if it's a name
+            album_name: Google Photos album name (if creating/finding by name)
+            album_id: Google Photos album ID (if using existing album)
         """
         logger.info("Starting synchronization...")
         logger.info(f"Source: Google Drive folder {drive_folder_id}")
         
-        if is_album_id:
-            logger.info(f"Target: Google Photos album ID '{photos_album}'")
+        if album_id:
+            logger.info(f"Target: Google Photos album ID '{album_id}'")
+        elif album_name:
+            logger.info(f"Target: Google Photos album name '{album_name}'")
         else:
-            logger.info(f"Target: Google Photos album name '{photos_album}'")
+            raise ValueError("Either album_name or album_id must be provided")
         
         try:
             # Authenticate and initialize clients
@@ -94,17 +96,12 @@ class SyncEngine:
             self.photos_client = PhotosClient(credentials)
             
             # Determine target album ID
-            if is_album_id:
-                album_id = photos_album
-                logger.info(f"Using provided album ID: {album_id}")
+            if album_id:
+                target_album_id = album_id
+                logger.info(f"Using album ID: {target_album_id}")
             else:
-                # Extract ID from URL if it's a URL, otherwise treat as name
-                album_id = extract_album_id_from_url(photos_album)
-                if album_id:
-                    logger.info(f"Extracted album ID from URL: {album_id}")
-                else:
-                    # Treat as album name, get or create
-                    album_id = self.photos_client.get_or_create_album(photos_album)
+                # Get or create album by name
+                target_album_id = self.photos_client.get_or_create_album(album_name)
                 
             # Get list of files from Drive
             logger.info("Scanning Google Drive folder...")
@@ -145,7 +142,7 @@ class SyncEngine:
             for i, file_info in enumerate(media_files, 1):
                 logger.info(f"Processing file {i}/{len(media_files)}: {file_info['name']}")
                 
-                result = self._sync_file(file_info, album_id, processed_hashes)
+                result = self._sync_file(file_info, target_album_id, processed_hashes)
                 print(f"{result}")
                 
                 if result.status == 'success':
@@ -164,7 +161,7 @@ class SyncEngine:
             
             # Launch browser if requested
             if self.launch_browser and success_count > 0:
-                album_url = self.photos_client.get_album_url(album_id)
+                album_url = self.photos_client.get_album_url(target_album_id)
                 logger.info(f"Opening album in browser: {album_url}")
                 webbrowser.open(album_url)
                 

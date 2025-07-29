@@ -36,9 +36,9 @@ This is a brand new project. No code has been written yet.
 - After completing the import, launch a browser window with the Google Photos Album
 
 ### Command Line Options
-- Google Drive folder ID to import from (positional argument). Sharing URLs are not supported.
+- Google Drive folder ID or URL to import from (positional argument). URLs are automatically detected and extracted.
 - Either --album-name OR --album-id (mutually exclusive):
-  - --album-name: Google Photos album name to import into. Album will be created if it does not exist.
+  - --album-name: Google Photos album name or URL to import into. Album will be created if it does not exist. URLs are automatically detected and extracted.
   - --album-id: Google Photos album ID to import into. Album must already exist.
 - Optional arguments to:
   - Enable verbose logging

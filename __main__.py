@@ -9,6 +9,7 @@ import logging
 import argparse
 import sys
 from sync_engine import SyncEngine
+from utils import extract_album_id_from_url, extract_folder_id_from_url
 
 def setup_logging(verbose: bool = False) -> None:
     """Setup logging configuration."""
@@ -25,18 +26,11 @@ def main():
     )
     parser.add_argument(
         "drive-folder-id",
-        help="Google Drive folder ID to import from. (Sharing URLs are not supported.)"
+        help="Google Drive folder ID or URL to import from."
     )
-    
-    # Create mutually exclusive group for album specification
-    album_group = parser.add_mutually_exclusive_group(required=True)
-    album_group.add_argument(
-        "--album-name",
-        help="Google Photos album name to import into. Album will be created if it does not exist."
-    )
-    album_group.add_argument(
-        "--album-id", 
-        help="Google Photos album ID to import into. Album must already exist."
+    parser.add_argument(
+        "album-name",
+        help="Google Photos album name or URL to import into. Album will be created if it does not exist."
     )
     parser.add_argument(
         "--verbose", "-v",
@@ -92,15 +86,26 @@ def main():
             reset_auth=args.reset_auth
         )
         
-        # Determine album target
-        if args.album_name:
-            album_target = args.album_name
-            is_album_id = False
-        else:
-            album_target = args.album_id
-            is_album_id = True
+        # Extract Drive folder ID from URL if provided
+        drive_folder_input = getattr(args, 'drive-folder-id')
+        drive_folder_id = extract_folder_id_from_url(drive_folder_input)
+        if not drive_folder_id:
+            print(f"Error: Invalid Google Drive folder ID or URL: {drive_folder_input}")
+            sys.exit(1)
             
-        engine.sync(getattr(args, 'drive-folder-id'), album_target, is_album_id)
+        # Determine album target and extract ID if URL provided
+        album_input = getattr(args, 'album-name')
+        extracted_id = extract_album_id_from_url(album_input)
+        if extracted_id:
+            # It's a URL, use the extracted ID
+            album_name = None
+            album_id = extracted_id
+        else:
+            # It's a name
+            album_name = album_input
+            album_id = None
+            
+        engine.sync(drive_folder_id, album_name=album_name, album_id=album_id)
         
     except KeyboardInterrupt:
         print("\nSync cancelled by user")
