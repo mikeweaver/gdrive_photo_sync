@@ -24,7 +24,7 @@ class TestPhotosClient(unittest.TestCase):
         
         client = PhotosClient(self.mock_credentials)
         
-        mock_build.assert_called_once_with('photoslibrary', 'v1', credentials=self.mock_credentials)
+        mock_build.assert_called_once_with('photoslibrary', 'v1', credentials=self.mock_credentials, static_discovery=False)
         self.assertEqual(client.service, mock_service)
         
     def test_find_album_by_name_found(self):
@@ -117,45 +117,19 @@ class TestPhotosClient(unittest.TestCase):
         
     def test_upload_media_success(self):
         """Test successful media upload."""
-        # Mock the upload and media item creation
+        # Mock the upload to return upload token
         with patch('requests.post') as mock_post:
             mock_post.return_value.text = 'upload_token_123'
-            
-            mock_create_response = {
-                'newMediaItemResults': [
-                    {
-                        'mediaItem': {
-                            'id': 'new_item_id',
-                            'filename': 'test.jpg'
-                        },
-                        'status': {'message': 'Success'}
-                    }
-                ]
-            }
-            
-            self.mock_service.mediaItems.return_value.batchCreate.return_value.execute.return_value = mock_create_response
+            mock_post.return_value.raise_for_status = Mock()
             
             result = self.client.upload_media(b'image_content', 'test.jpg')
             
-            self.assertEqual(result, 'new_item_id')
+            self.assertEqual(result, 'upload_token_123')
             
     def test_upload_media_failure(self):
         """Test media upload failure."""
         with patch('requests.post') as mock_post:
-            mock_post.return_value.text = 'upload_token_123'
-            
-            mock_create_response = {
-                'newMediaItemResults': [
-                    {
-                        'status': {
-                            'message': 'Upload failed',
-                            'code': 'FAILED_PRECONDITION'
-                        }
-                    }
-                ]
-            }
-            
-            self.mock_service.mediaItems.return_value.batchCreate.return_value.execute.return_value = mock_create_response
+            mock_post.return_value.raise_for_status.side_effect = Exception("Upload failed")
             
             with self.assertRaises(Exception):
                 self.client.upload_media(b'image_content', 'test.jpg')
@@ -167,7 +141,7 @@ class TestPhotosClient(unittest.TestCase):
         self.mock_service.albums.return_value.batchAddMediaItems.return_value.execute.return_value = mock_response
         
         # Should not raise an exception
-        self.client.add_media_to_album('album123', ['item1', 'item2'])
+        self.client.batch_add_media_to_album('album123', ['item1', 'item2'])
         
         self.mock_service.albums.return_value.batchAddMediaItems.assert_called_once_with(
             albumId='album123',
@@ -215,38 +189,6 @@ class TestPhotosClient(unittest.TestCase):
         
         self.assertEqual(result, expected_url)
         
-    def test_check_filename_exists_in_album_true(self):
-        """Test checking if filename exists in album - found."""
-        mock_response = {
-            'mediaItems': [
-                {'id': 'item1', 'filename': 'photo1.jpg'},
-                {'id': 'item2', 'filename': 'target.jpg'},
-                {'id': 'item3', 'filename': 'photo3.jpg'}
-            ],
-            'nextPageToken': None
-        }
-        
-        self.mock_service.mediaItems.return_value.search.return_value.execute.return_value = mock_response
-        
-        result = self.client.check_filename_exists_in_album('album123', 'target.jpg')
-        
-        self.assertTrue(result)
-        
-    def test_check_filename_exists_in_album_false(self):
-        """Test checking if filename exists in album - not found."""
-        mock_response = {
-            'mediaItems': [
-                {'id': 'item1', 'filename': 'photo1.jpg'},
-                {'id': 'item2', 'filename': 'photo2.jpg'}
-            ],
-            'nextPageToken': None
-        }
-        
-        self.mock_service.mediaItems.return_value.search.return_value.execute.return_value = mock_response
-        
-        result = self.client.check_filename_exists_in_album('album123', 'missing.jpg')
-        
-        self.assertFalse(result)
 
 
 if __name__ == '__main__':
