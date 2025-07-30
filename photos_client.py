@@ -149,7 +149,7 @@ class PhotosClient:
             
     def upload_media(self, file_content: bytes, filename: str, max_retries: int = 2) -> str:
         """
-        Upload media file to Google Photos.
+        Upload media file to Google Photos and return upload token.
         
         Args:
             file_content: File content as bytes
@@ -157,14 +157,13 @@ class PhotosClient:
             max_retries: Maximum number of retry attempts
             
         Returns:
-            Media item ID
+            Upload token for use in batch operations
             
         Raises:
             Exception: If upload fails after retries
         """
         for attempt in range(max_retries + 1):
             try:
-                # Step 1: Upload raw bytes to get upload token
                 headers = {
                     'Authorization': f'Bearer {self.credentials.token}',
                     'Content-type': 'application/octet-stream',
@@ -180,34 +179,8 @@ class PhotosClient:
                 upload_response.raise_for_status()
                 upload_token = upload_response.text
                 
-                # Step 2: Create media item from upload token
-                create_body = {
-                    'newMediaItems': [
-                        {
-                            'description': f'Uploaded from Google Drive: {filename}',
-                            'simpleMediaItem': {
-                                'fileName': filename,
-                                'uploadToken': upload_token
-                            }
-                        }
-                    ]
-                }
-                
-                create_result = self.service.mediaItems().batchCreate(body=create_body).execute()
-                
-                # Check result
-                new_media_results = create_result.get('newMediaItemResults', [])
-                if not new_media_results:
-                    raise Exception("No media item results returned")
-                    
-                result = new_media_results[0]
-                if 'mediaItem' in result:
-                    media_item_id = result['mediaItem']['id']
-                    logger.debug(f"Successfully uploaded {filename} as {media_item_id}")
-                    return media_item_id
-                else:
-                    error_msg = result.get('status', {}).get('message', 'Unknown error')
-                    raise Exception(f"Media item creation failed: {error_msg}")
+                logger.debug(f"Successfully uploaded {filename}, got token")
+                return upload_token
                     
             except Exception as e:
                 if attempt < max_retries:
@@ -217,33 +190,113 @@ class PhotosClient:
                 else:
                     logger.error(f"Upload failed after {max_retries + 1} attempts: {e}")
                     raise
-                    
-    def add_media_to_album(self, album_id: str, media_item_ids: List[str]) -> None:
+    def batch_create_media_items(self, upload_tokens_and_filenames: List[tuple], max_retries: int = 2) -> List[str]:
         """
-        Add media items to an album.
+        Create media items from upload tokens in batches (up to 50 at once).
+        
+        Args:
+            upload_tokens_and_filenames: List of (upload_token, filename) tuples
+            max_retries: Maximum number of retry attempts
+            
+        Returns:
+            List of media item IDs
+            
+        Raises:
+            Exception: If batch creation fails after retries
+        """
+        media_item_ids = []
+        
+        # Process in batches of 50
+        for i in range(0, len(upload_tokens_and_filenames), 50):
+            batch = upload_tokens_and_filenames[i:i+50]
+            
+            for attempt in range(max_retries + 1):
+                try:
+                    new_media_items = []
+                    for upload_token, filename in batch:
+                        new_media_items.append({
+                            'description': f'Uploaded from Google Drive: {filename}',
+                            'simpleMediaItem': {
+                                'fileName': filename,
+                                'uploadToken': upload_token
+                            }
+                        })
+                    
+                    create_body = {
+                        'newMediaItems': new_media_items
+                    }
+                    
+                    create_result = self.service.mediaItems().batchCreate(body=create_body).execute()
+                    
+                    # Process results
+                    new_media_results = create_result.get('newMediaItemResults', [])
+                    if not new_media_results:
+                        raise Exception("No media item results returned")
+                    
+                    batch_ids = []
+                    for j, result in enumerate(new_media_results):
+                        if 'mediaItem' in result:
+                            media_item_id = result['mediaItem']['id']
+                            batch_ids.append(media_item_id)
+                            logger.debug(f"Successfully created media item for {batch[j][1]}")
+                        else:
+                            error_msg = result.get('status', {}).get('message', 'Unknown error')
+                            logger.error(f"Media item creation failed for {batch[j][1]}: {error_msg}")
+                            raise Exception(f"Batch creation failed: {error_msg}")
+                    
+                    media_item_ids.extend(batch_ids)
+                    logger.info(f"Successfully created batch of {len(batch_ids)} media items")
+                    break
+                    
+                except Exception as e:
+                    if attempt < max_retries:
+                        wait_time = 2 ** attempt
+                        logger.warning(f"Batch create attempt {attempt + 1} failed, retrying in {wait_time}s: {e}")
+                        time.sleep(wait_time)
+                    else:
+                        logger.error(f"Batch create failed after {max_retries + 1} attempts: {e}")
+                        raise
+        
+        return media_item_ids
+                    
+    def batch_add_media_to_album(self, album_id: str, media_item_ids: List[str], max_retries: int = 2) -> None:
+        """
+        Add media items to an album in batches (up to 50 at once).
         
         Args:
             album_id: ID of the album
             media_item_ids: List of media item IDs to add
+            max_retries: Maximum number of retry attempts
             
         Raises:
-            Exception: If adding to album fails
+            Exception: If adding to album fails after retries
         """
-        try:
-            add_body = {
-                'mediaItemIds': media_item_ids
-            }
+        # Process in batches of 50
+        for i in range(0, len(media_item_ids), 50):
+            batch = media_item_ids[i:i+50]
             
-            self.service.albums().batchAddMediaItems(
-                albumId=album_id,
-                body=add_body
-            ).execute()
-            
-            logger.debug(f"Added {len(media_item_ids)} items to album {album_id}")
-            
-        except HttpError as e:
-            logger.error(f"Error adding media items to album {album_id}: {e}")
-            raise
+            for attempt in range(max_retries + 1):
+                try:
+                    add_body = {
+                        'mediaItemIds': batch
+                    }
+                    
+                    self.service.albums().batchAddMediaItems(
+                        albumId=album_id,
+                        body=add_body
+                    ).execute()
+                    
+                    logger.info(f"Added batch of {len(batch)} items to album {album_id}")
+                    break
+                    
+                except HttpError as e:
+                    if attempt < max_retries:
+                        wait_time = 2 ** attempt
+                        logger.warning(f"Batch add attempt {attempt + 1} failed, retrying in {wait_time}s: {e}")
+                        time.sleep(wait_time)
+                    else:
+                        logger.error(f"Batch add failed after {max_retries + 1} attempts: {e}")
+                        raise
             
     def check_media_exists_in_album(self, album_id: str, media_item_id: str) -> bool:
         """
@@ -266,26 +319,6 @@ class PhotosClient:
             logger.error(f"Error checking if media exists in album: {e}")
             return False
             
-    def check_filename_exists_in_album(self, album_id: str, filename: str) -> bool:
-        """
-        Check if a filename already exists in an album.
-        
-        Args:
-            album_id: ID of the album
-            filename: Filename to check
-            
-        Returns:
-            True if filename exists in album, False otherwise
-        """
-        try:
-            for item in self.list_album_media_items(album_id):
-                if item.get('filename') == filename:
-                    return True
-            return False
-            
-        except Exception as e:
-            logger.error(f"Error checking if filename exists in album: {e}")
-            return False
             
     def get_album_url(self, album_id: str) -> str:
         """
